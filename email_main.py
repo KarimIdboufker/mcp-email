@@ -20,6 +20,22 @@ IMAP_SERVER = 'imap.gmail.com'
 IMAP_PORT = 993
     
 
+async def send_email(to: str, subject:str, body:str):
+    email_user =  os.environ['EMAIL_USER']
+    email_password = os.environ['EMAIL_APP_PASSWORD']
+    
+    msg = MIMEMultipart()
+    msg["from"] = email_user
+    msg["to"] = to
+    msg["subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+    
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(email_user, email_password)
+        server.send_message(msg)
+
+
 async def fetch_n_emails(n=5): 
     """takes email address and access code and returns n unread emails
         connects to gmail via IMAP
@@ -87,6 +103,19 @@ server = Server("email-reply-server")
 async def handle_list_tools() -> list[types.Tool]:
     return[
         types.Tool(
+            name="send_email",
+            description = "Send an email",
+            inputSchema = {
+                "type": "object",
+                "properties": {
+                    "to": {"type": "string", "description": "Recipient email address"},
+                    "subject": {"type": "string", "description": "Email subject"},
+                    "body": {"type": "string", "description": "Email body content"}
+                },
+                "required": ["to", "subject", "body"],
+            },
+        ),
+        types.Tool(
             name="fetch_n_emails",
             description = " fetch n unread emails from Gmail via IMAP",
             inputSchema = {
@@ -135,15 +164,19 @@ async def handle_list_tools() -> list[types.Tool]:
 
 @server.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[types.TextContent]:
+    if name == "send_email":
+        to = arguments["to"]
+        subject = arguments["subject"]
+        body = arguments["body"]
+        
+        await send_email(to, subject, body)
+        return [types.TextContent(type = "text", text = f"✓ Email sent to {to}")]
+    
     if name == "fetch_n_emails":
         n = int(arguments.get("n", 5))
         emails = await fetch_n_emails(n=n)
-        return [
-            types.TextContent(
-                type="text",
-                text=json.dumps(emails, ensure_ascii=False, indent=2)
-            )
-        ]
+        return [types.TextContent(type="text", text=json.dumps(emails, ensure_ascii=False, indent=2))]
+    
     if name == "draft_reply":
         initial_msg = {
             "from": arguments["from"],
